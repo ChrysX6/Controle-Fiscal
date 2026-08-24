@@ -1,12 +1,3 @@
-// ==========================================================
-// SCRIPT.JS - Painel de Controle Fiscal AguiaContab
-// ==========================================================
-// IMPORTANTE: Este arquivo NÃO tem mais URL própria.
-// A URL do Apps Script e o ID da planilha vêm TODOS do meses.js
-// (arquivo CONFIG). Assim você só precisa atualizar em UM lugar
-// caso a URL do script mude no futuro.
-// ==========================================================
-
 // Pega a URL e o ID direto da configuração central (meses.js)
 const APPS_SCRIPT_URL = CONFIG.APPS_SCRIPT_URL;
 const SPREADSHEET_ID = CONFIG.SPREADSHEET_ID;
