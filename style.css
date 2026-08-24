@@ -11,6 +11,7 @@ body {
   scrollbar-color: #1e63d0 #e6e9ef;
 }
 
+/* ---------- LOGIN ---------- */
 #tela-login {
   height: 100vh;
   display: flex;
@@ -60,6 +61,7 @@ body {
   margin-bottom: 10px;
 }
 
+/* ---------- HEADER ---------- */
 header {
   background: #0b1d3a;
   color: #fff;
@@ -92,6 +94,7 @@ header {
 .header-right .btn-duplicar { background: #6a3fb5; }
 .header-right .btn-sair { background: #c0392b; }
 
+/* ---------- MESES / CATEGORIAS ---------- */
 #botoes-meses, #abas-categorias {
   display: flex;
   gap: 8px;
@@ -112,6 +115,7 @@ header {
 
 .btn-mes.ativo, .btn-categoria.ativo { background: #0b1d3a; color: #fff; }
 
+/* ---------- DASHBOARD ---------- */
 #dashboard-container { padding: 16px 24px 0; }
 
 .dashboard-cards {
@@ -154,6 +158,7 @@ header {
 
 .card-percentual { font-size: 12px; font-weight: 600; color: #555; text-align: right; }
 
+/* ---------- CONTEÚDO ---------- */
 .conteudo { padding: 20px 24px; }
 
 .barra-acoes {
@@ -174,8 +179,10 @@ header {
   padding: 10px 16px;
   border-radius: 6px;
   cursor: pointer;
-  
-  .btn-exportar {
+  font-weight: 600;
+}
+
+.btn-exportar {
   background: #0e8a6d;
   color: #fff;
   border: none;
