@@ -7,6 +7,8 @@ body {
   margin: 0;
   background: #f2f4f7;
   color: #1a1a1a;
+  scrollbar-width: thin;
+  scrollbar-color: #1e63d0 #e6e9ef;
 }
 
 /* ---------- LOGIN ---------- */
@@ -178,7 +180,11 @@ header {
   background: #fff;
   border-radius: 8px;
   overflow-x: auto;
+  overflow-y: auto;
+  max-height: 65vh;
   box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+  scrollbar-width: thin;
+  scrollbar-color: #1e63d0 #e6e9ef;
 }
 
 table.tabela-dados {
@@ -193,6 +199,9 @@ table.tabela-dados th {
   padding: 10px 8px;
   text-align: left;
   white-space: nowrap;
+  position: sticky;
+  top: 0;
+  z-index: 2;
 }
 
 table.tabela-dados td {
@@ -216,8 +225,30 @@ table.tabela-dados td {
   background: #f0f6ff;
 }
 
+/* ---------- CHECKLIST (SIM/NÃO E 0/1) COM BORDA VISÍVEL ---------- */
 .celula-check {
   text-align: center;
+}
+
+.celula-check input[type="checkbox"] {
+  width: 20px;
+  height: 20px;
+  border: 2px solid #0b1d3a;
+  border-radius: 5px;
+  cursor: pointer;
+  accent-color: #1e63d0;
+  outline: 1px solid #ccc;
+  outline-offset: 2px;
+  transition: border-color 0.2s, box-shadow 0.2s;
+}
+
+.celula-check input[type="checkbox"]:hover {
+  border-color: #1e63d0;
+  box-shadow: 0 0 4px rgba(30, 99, 208, 0.4);
+}
+
+.celula-check input[type="checkbox"]:focus {
+  outline: 2px solid #1e63d0;
 }
 
 .btn-remover {
@@ -234,6 +265,35 @@ table.tabela-dados td {
 }
 
 .erro-msg { color: #c0392b; }
+
+/* ---------- BARRA DE ROLAGEM PERSONALIZADA (Chrome/Edge/Safari) ---------- */
+#tabela-container::-webkit-scrollbar,
+.modal-caixa::-webkit-scrollbar,
+body::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
+#tabela-container::-webkit-scrollbar-track,
+.modal-caixa::-webkit-scrollbar-track,
+body::-webkit-scrollbar-track {
+  background: #e6e9ef;
+  border-radius: 10px;
+}
+
+#tabela-container::-webkit-scrollbar-thumb,
+.modal-caixa::-webkit-scrollbar-thumb,
+body::-webkit-scrollbar-thumb {
+  background: #1e63d0;
+  border-radius: 10px;
+  border: 2px solid #e6e9ef;
+}
+
+#tabela-container::-webkit-scrollbar-thumb:hover,
+.modal-caixa::-webkit-scrollbar-thumb:hover,
+body::-webkit-scrollbar-thumb:hover {
+  background: #0b1d3a;
+}
 
 /* ---------- MODAIS ---------- */
 .modal {
@@ -253,6 +313,8 @@ table.tabela-dados td {
   width: 400px;
   max-height: 80vh;
   overflow-y: auto;
+  scrollbar-width: thin;
+  scrollbar-color: #1e63d0 #e6e9ef;
 }
 
 .modal-caixa h3 {
