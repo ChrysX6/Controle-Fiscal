@@ -1,190 +1,310 @@
-// Pega a URL e o ID direto da configuração central (meses.js)
+// ==========================================================
+// script.js
+// Lógica completa do Controle Fiscal - AguiaContab
+// Lê toda a configuração do meses.js (objeto CONFIG)
+// ==========================================================
+
 const APPS_SCRIPT_URL = CONFIG.APPS_SCRIPT_URL;
-const SPREADSHEET_ID = CONFIG.SPREADSHEET_ID;
-const SPREADSHEET_URL = CONFIG.SPREADSHEET_URL;
-const SENHA_ACESSO = CONFIG.SENHA_ACESSO;
 
 let mesAtual = CONFIG.MES_PADRAO;
-let categoriaAtual = "SERV";
+let categoriaAtual = CONFIG.CATEGORIAS[0].chave;
+let dadosAtuais = [];
+let empresaEmEdicao = null;
 
-// ==========================================================
-// LOGIN
-// ==========================================================
-function verificarSenha() {
-  const senhaDigitada = document.getElementById("inputSenha").value;
-  if (senhaDigitada === SENHA_ACESSO) {
-    sessionStorage.setItem("acessoLiberado", "true");
-    document.getElementById("telaLogin").style.display = "none";
-    document.getElementById("telaPrincipal").style.display = "block";
-    inicializarPainel();
-  } else {
-    document.getElementById("erroSenha").innerText = "Senha incorreta. Tente novamente.";
-  }
-}
+// ================= LOGIN =================
+const telaLogin = document.getElementById("tela-login");
+const app = document.getElementById("app");
+const inputSenha = document.getElementById("input-senha");
+const btnEntrar = document.getElementById("btn-entrar");
+const erroLogin = document.getElementById("erro-login");
 
 function verificarSessao() {
-  if (sessionStorage.getItem("acessoLiberado") === "true") {
-    document.getElementById("telaLogin").style.display = "none";
-    document.getElementById("telaPrincipal").style.display = "block";
-    inicializarPainel();
+  if (sessionStorage.getItem("aguia_logado") === "true") {
+    liberarAcesso();
   }
 }
 
-// ==========================================================
-// INICIALIZAÇÃO
-// ==========================================================
-function inicializarPainel() {
-  montarAbasMeses();
-  montarAbasCategorias();
+function liberarAcesso() {
+  telaLogin.classList.add("oculto");
+  app.classList.remove("oculto");
+  inicializarInterface();
+}
+
+btnEntrar.addEventListener("click", tentarLogin);
+inputSenha.addEventListener("keydown", (e) => { if (e.key === "Enter") tentarLogin(); });
+
+function tentarLogin() {
+  const valor = inputSenha.value.trim();
+  if (valor === CONFIG.SENHA_ACESSO) {
+    sessionStorage.setItem("aguia_logado", "true");
+    erroLogin.textContent = "";
+    liberarAcesso();
+  } else {
+    erroLogin.textContent = "Senha incorreta. Tente novamente.";
+  }
+}
+
+document.getElementById("btn-sair").addEventListener("click", () => {
+  sessionStorage.removeItem("aguia_logado");
+  location.reload();
+});
+
+// ================= INICIALIZAÇÃO DA INTERFACE =================
+function inicializarInterface() {
+  montarNavMeses();
+  montarNavCategorias();
+  document.getElementById("btn-abrir-planilha").addEventListener("click", () => {
+    window.open(CONFIG.SPREADSHEET_URL, "_blank");
+  });
+  document.getElementById("btn-add-empresa").addEventListener("click", abrirModalAdicionar);
+  document.getElementById("btn-novo-mes").addEventListener("click", abrirModalNovoMes);
   carregarDados();
 }
 
-function montarAbasMeses() {
-  const container = document.getElementById("abasMeses");
-  container.innerHTML = "";
-  CONFIG.MESES_DISPONIVEIS.forEach(mes => {
+function montarNavMeses() {
+  const nav = document.getElementById("nav-meses");
+  nav.innerHTML = "";
+  CONFIG.MESES.forEach(mes => {
     const btn = document.createElement("button");
-    btn.innerText = mes;
-    btn.className = "aba-mes" + (mes === mesAtual ? " ativa" : "");
-    btn.onclick = () => {
-      mesAtual = mes;
-      montarAbasMeses();
+    btn.className = "aba-btn" + (mes.chave === mesAtual ? " ativo" : "");
+    btn.textContent = mes.label;
+    btn.addEventListener("click", () => {
+      mesAtual = mes.chave;
+      montarNavMeses();
       carregarDados();
-    };
-    container.appendChild(btn);
+    });
+    nav.appendChild(btn);
   });
 }
 
-function montarAbasCategorias() {
-  const container = document.getElementById("abasCategorias");
-  container.innerHTML = "";
-  const categorias = [
-    { chave: "SERV", label: "Serviços" },
-    { chave: "COMIND", label: "Comércio/Indústria" },
-    { chave: "ASSOC", label: "Associações" },
-    { chave: "SM", label: "SM" }
-  ];
-  categorias.forEach(cat => {
+function montarNavCategorias() {
+  const nav = document.getElementById("nav-categorias");
+  nav.innerHTML = "";
+  CONFIG.CATEGORIAS.forEach(cat => {
     const btn = document.createElement("button");
-    btn.innerText = cat.label;
-    btn.className = "aba-categoria" + (cat.chave === categoriaAtual ? " ativa" : "");
-    btn.onclick = () => {
+    btn.className = "aba-btn" + (cat.chave === categoriaAtual ? " ativo" : "");
+    btn.textContent = cat.label;
+    btn.addEventListener("click", () => {
       categoriaAtual = cat.chave;
-      montarAbasCategorias();
+      montarNavCategorias();
       carregarDados();
-    };
-    container.appendChild(btn);
+    });
+    nav.appendChild(btn);
   });
 }
 
-// ==========================================================
-// COMUNICAÇÃO COM O APPS SCRIPT (SEM CORS - usando text/plain)
-// ==========================================================
-function chamarBackend(acao, dados) {
-  const payload = JSON.stringify({ acao, mes: mesAtual, categoria: categoriaAtual, dados });
-
+// ================= COMUNICAÇÃO COM O APPS SCRIPT =================
+function chamarBackend(acao, payload) {
+  mostrarStatus("Salvando...");
   return fetch(APPS_SCRIPT_URL, {
     method: "POST",
     headers: { "Content-Type": "text/plain;charset=utf-8" },
-    body: payload
-  }).then(res => res.json());
+    body: JSON.stringify({ acao, ...payload })
+  })
+  .then(res => res.json())
+  .then(resposta => {
+    mostrarStatus(resposta.ok ? "Salvo ✅" : "Erro ao salvar ❌");
+    return resposta;
+  })
+  .catch(erro => {
+    mostrarStatus("Erro de conexão ❌");
+    console.error(erro);
+    throw erro;
+  });
 }
 
+function mostrarStatus(texto) {
+  const el = document.getElementById("status-salvando");
+  el.textContent = texto;
+  setTimeout(() => { el.textContent = ""; }, 2500);
+}
+
+function nomeAba() {
+  return `${mesAtual}_${categoriaAtual}`;
+}
+
+// ================= CARREGAR DADOS =================
 function carregarDados() {
-  document.getElementById("tabelaEmpresas").innerHTML = "<tr><td>Carregando...</td></tr>";
-  chamarBackend("listar", {})
-    .then(resp => renderizarTabela(resp.empresas || []))
-    .catch(err => {
-      console.error(err);
-      document.getElementById("tabelaEmpresas").innerHTML =
-        "<tr><td>Erro ao carregar dados. Verifique a URL do Apps Script no meses.js.</td></tr>";
+  const url = `${APPS_SCRIPT_URL}?acao=listar&aba=${encodeURIComponent(nomeAba())}`;
+  document.getElementById("tabela-corpo").innerHTML = `<tr><td colspan="20">Carregando...</td></tr>`;
+
+  fetch(url, { method: "GET" })
+    .then(res => res.json())
+    .then(resposta => {
+      dadosAtuais = resposta.dados || [];
+      renderizarTabela();
+    })
+    .catch(erro => {
+      console.error(erro);
+      document.getElementById("tabela-corpo").innerHTML =
+        `<tr><td colspan="20">Erro ao carregar dados. Verifique a conexão com o Apps Script.</td></tr>`;
     });
 }
 
-// ==========================================================
-// RENDERIZAÇÃO DA TABELA
-// ==========================================================
-function renderizarTabela(empresas) {
-  const colunas = [
-    "MOV", "EMPRESA", "ENVIO", "RET_PRES", "RET_TOMA",
-    "PREFEITURA", "GUIA_ISS", "EFD_CONTRIB", "DIRBI", "MIT", "EFD_REINF"
-  ];
+// ================= RENDERIZAR TABELA =================
+function renderizarTabela() {
+  const colunas = CONFIG.COLUNAS[categoriaAtual];
+  const thead = document.getElementById("tabela-cabecalho");
+  const tbody = document.getElementById("tabela-corpo");
 
-  let html = "<table><thead><tr>";
-  colunas.forEach(c => html += `<th>${c.replace("_", " ")}</th>`);
-  html += "<th>Ações</th></tr></thead><tbody>";
+  thead.innerHTML = "<tr>" + colunas.map(c => `<th>${c.label}</th>`).join("") + "<th>Ações</th></tr>";
 
-  empresas.forEach((emp, index) => {
-    html += "<tr>";
+  if (!dadosAtuais.length) {
+    tbody.innerHTML = `<tr><td colspan="${colunas.length + 1}">Nenhuma empresa cadastrada nesta aba.</td></tr>`;
+    return;
+  }
+
+  tbody.innerHTML = "";
+  dadosAtuais.forEach((linha, indice) => {
+    const tr = document.createElement("tr");
+
     colunas.forEach(col => {
-      if (col === "EMPRESA") {
-        html += `<td>${emp.EMPRESA || ""}</td>`;
+      const td = document.createElement("td");
+      const valor = linha[col.chave];
+
+      if (col.tipo === "checkbox") {
+        const check = document.createElement("input");
+        check.type = "checkbox";
+        check.checked = valor === 1 || valor === "1" || valor === true;
+        check.addEventListener("change", () => {
+          linha[col.chave] = check.checked ? 1 : 0;
+          salvarLinha(indice, linha);
+        });
+        td.appendChild(check);
       } else {
-        const checked = emp[col] == 1 ? "checked" : "";
-        html += `<td><input type="checkbox" ${checked} onchange="atualizarCampo(${index}, '${col}', this.checked)"></td>`;
+        td.textContent = valor || "";
+        if (col.chave === "EMPRESAS") td.classList.add("texto-empresa");
       }
+      tr.appendChild(td);
     });
-    html += `<td>
-      <button onclick="editarEmpresa(${index})">✏️</button>
-      <button onclick="removerEmpresa(${index})">🗑️</button>
-    </td>`;
-    html += "</tr>";
+
+    const tdAcoes = document.createElement("td");
+    tdAcoes.innerHTML = `
+      <span class="acao-icone" title="Editar">✏️</span>
+      <span class="acao-icone" title="Remover">🗑️</span>
+    `;
+    tdAcoes.children[0].addEventListener("click", () => abrirModalEditar(indice));
+    tdAcoes.children[1].addEventListener("click", () => removerEmpresa(indice));
+    tr.appendChild(tdAcoes);
+
+    tbody.appendChild(tr);
+  });
+}
+
+// ================= SALVAR LINHA (checkbox) =================
+function salvarLinha(indice, linha) {
+  chamarBackend("atualizarLinha", {
+    aba: nomeAba(),
+    indice,
+    linha
+  });
+}
+
+// ================= MODAL ADICIONAR / EDITAR =================
+const modalEmpresa = document.getElementById("modal-empresa");
+const modalTitulo = document.getElementById("modal-titulo");
+const modalCampos = document.getElementById("modal-campos");
+
+function abrirModalAdicionar() {
+  empresaEmEdicao = null;
+  modalTitulo.textContent = "Adicionar Empresa";
+  montarCamposModal({});
+  modalEmpresa.classList.remove("oculto");
+}
+
+function abrirModalEditar(indice) {
+  empresaEmEdicao = indice;
+  modalTitulo.textContent = "Editar Empresa";
+  montarCamposModal(dadosAtuais[indice]);
+  modalEmpresa.classList.remove("oculto");
+}
+
+function montarCamposModal(dados) {
+  const colunas = CONFIG.COLUNAS[categoriaAtual];
+  modalCampos.innerHTML = "";
+  colunas.forEach(col => {
+    const div = document.createElement("div");
+    div.className = "campo-modal";
+    const label = document.createElement("label");
+    label.textContent = col.label;
+    div.appendChild(label);
+
+    if (col.tipo === "checkbox") {
+      const input = document.createElement("input");
+      input.type = "checkbox";
+      input.dataset.chave = col.chave;
+      input.checked = dados[col.chave] === 1 || dados[col.chave] === "1";
+      div.appendChild(input);
+    } else {
+      const input = document.createElement("input");
+      input.type = "text";
+      input.dataset.chave = col.chave;
+      input.value = dados[col.chave] || "";
+      div.appendChild(input);
+    }
+    modalCampos.appendChild(div);
+  });
+}
+
+document.getElementById("btn-modal-cancelar").addEventListener("click", () => {
+  modalEmpresa.classList.add("oculto");
+});
+
+document.getElementById("btn-modal-salvar").addEventListener("click", () => {
+  const inputs = modalCampos.querySelectorAll("input");
+  const novaLinha = {};
+  inputs.forEach(input => {
+    if (input.type === "checkbox") {
+      novaLinha[input.dataset.chave] = input.checked ? 1 : 0;
+    } else {
+      novaLinha[input.dataset.chave] = input.value;
+    }
   });
 
-  html += "</tbody></table>";
-  document.getElementById("tabelaEmpresas").innerHTML = html;
+  if (empresaEmEdicao === null) {
+    chamarBackend("adicionarLinha", { aba: nomeAba(), linha: novaLinha })
+      .then(() => { modalEmpresa.classList.add("oculto"); carregarDados(); });
+  } else {
+    chamarBackend("atualizarLinha", { aba: nomeAba(), indice: empresaEmEdicao, linha: novaLinha })
+      .then(() => { modalEmpresa.classList.add("oculto"); carregarDados(); });
+  }
+});
+
+// ================= REMOVER EMPRESA =================
+function removerEmpresa(indice) {
+  const nomeEmpresa = dadosAtuais[indice].EMPRESAS || "esta empresa";
+  if (!confirm(`Tem certeza que deseja remover "${nomeEmpresa}"?`)) return;
+
+  chamarBackend("removerLinha", { aba: nomeAba(), indice })
+    .then(() => carregarDados());
 }
 
-// ==========================================================
-// AÇÕES: EDITAR / ADICIONAR / REMOVER
-// ==========================================================
-function atualizarCampo(index, campo, valor) {
-  chamarBackend("atualizarCampo", { index, campo, valor: valor ? 1 : 0 })
-    .then(() => console.log("Atualizado com sucesso"))
-    .catch(err => console.error(err));
+// ================= CRIAR NOVO MÊS =================
+const modalNovoMes = document.getElementById("modal-novo-mes");
+
+function abrirModalNovoMes() {
+  document.getElementById("input-novo-mes").value = "";
+  modalNovoMes.classList.remove("oculto");
 }
 
-function adicionarEmpresa() {
-  const nome = prompt("Nome da nova empresa:");
-  if (!nome) return;
-  chamarBackend("adicionar", { nome })
-    .then(() => carregarDados())
-    .catch(err => console.error(err));
-}
+document.getElementById("btn-criar-mes-cancelar").addEventListener("click", () => {
+  modalNovoMes.classList.add("oculto");
+});
 
-function editarEmpresa(index) {
-  const novoNome = prompt("Novo nome da empresa:");
-  if (!novoNome) return;
-  chamarBackend("editar", { index, nome: novoNome })
-    .then(() => carregarDados())
-    .catch(err => console.error(err));
-}
+document.getElementById("btn-criar-mes-confirmar").addEventListener("click", () => {
+  const nomeMes = document.getElementById("input-novo-mes").value.trim().toUpperCase();
+  if (!nomeMes) return alert("Digite o nome do mês.");
 
-function removerEmpresa(index) {
-  if (!confirm("Tem certeza que deseja remover esta empresa?")) return;
-  chamarBackend("remover", { index })
-    .then(() => carregarDados())
-    .catch(err => console.error(err));
-}
+  chamarBackend("criarMes", { mes: nomeMes, templates: CONFIG.TEMPLATES })
+    .then(resposta => {
+      if (resposta.ok) {
+        alert(`Mês ${nomeMes} criado com sucesso! Adicione-o manualmente na lista MESES do arquivo meses.js para que apareça na navegação.`);
+        modalNovoMes.classList.add("oculto");
+      } else {
+        alert("Erro ao criar o novo mês: " + (resposta.erro || "desconhecido"));
+      }
+    });
+});
 
-// ==========================================================
-// CRIAR NOVO MÊS (duplica as abas TEMPLATE_*)
-// ==========================================================
-function criarNovoMes() {
-  const nomeMes = prompt("Nome do novo mês (ex: SETEMBRO):");
-  if (!nomeMes) return;
-  chamarBackend("criarMes", { nomeMes: nomeMes.toUpperCase() })
-    .then(() => {
-      alert("Mês criado! Atualize o meses.js adicionando '" + nomeMes.toUpperCase() + "' na lista de MESES_DISPONIVEIS.");
-    })
-    .catch(err => console.error(err));
-}
-
-function abrirPlanilha() {
-  window.open(SPREADSHEET_URL, "_blank");
-}
-
-// ==========================================================
-// INICIA AO CARREGAR A PÁGINA
-// ==========================================================
-window.onload = verificarSessao;
+// ================= START =================
+verificarSessao();
