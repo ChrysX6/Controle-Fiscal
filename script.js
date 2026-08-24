@@ -1,390 +1,199 @@
-// ============================================================
-// CONTROLE FISCAL - AGUIA CONTAB
-// Front-end: login, navegação de meses/categorias e integração
-// com o Google Apps Script (planilha única)
-// ============================================================
+// ==========================================================
+// SCRIPT.JS - Painel de Controle Fiscal AguiaContab
+// ==========================================================
+// IMPORTANTE: Este arquivo NÃO tem mais URL própria.
+// A URL do Apps Script e o ID da planilha vêm TODOS do meses.js
+// (arquivo CONFIG). Assim você só precisa atualizar em UM lugar
+// caso a URL do script mude no futuro.
+// ==========================================================
 
-const SENHA_ACESSO = "Aguia2025@";
+// Pega a URL e o ID direto da configuração central (meses.js)
+const APPS_SCRIPT_URL = CONFIG.APPS_SCRIPT_URL;
+const SPREADSHEET_ID = CONFIG.SPREADSHEET_ID;
+const SPREADSHEET_URL = CONFIG.SPREADSHEET_URL;
+const SENHA_ACESSO = CONFIG.SENHA_ACESSO;
 
-let estado = {
-  mes: null,
-  categoria: "SERV",
-  cabecalho: [],
-  linhas: [],
-  colunaEmpresa: 0
-};
+let mesAtual = CONFIG.MES_PADRAO;
+let categoriaAtual = "SERV";
 
-// ------------------------------------------------------------
+// ==========================================================
 // LOGIN
-// ------------------------------------------------------------
-const loginOverlay = document.getElementById("loginOverlay");
-const app = document.getElementById("app");
-const passwordInput = document.getElementById("passwordInput");
-const loginBtn = document.getElementById("loginBtn");
-const loginError = document.getElementById("loginError");
-
-function verificarLoginSalvo() {
-  if (sessionStorage.getItem("aguia_auth") === "1") {
-    liberarAcesso();
-  }
-}
-
-function liberarAcesso() {
-  loginOverlay.style.display = "none";
-  app.classList.remove("app-hidden");
-  iniciarApp();
-}
-
-loginBtn.addEventListener("click", tentarLogin);
-passwordInput.addEventListener("keyup", (e) => {
-  if (e.key === "Enter") tentarLogin();
-});
-
-function tentarLogin() {
-  const valor = passwordInput.value.trim();
-  if (valor === SENHA_ACESSO) {
-    sessionStorage.setItem("aguia_auth", "1");
-    loginError.textContent = "";
-    liberarAcesso();
+// ==========================================================
+function verificarSenha() {
+  const senhaDigitada = document.getElementById("inputSenha").value;
+  if (senhaDigitada === SENHA_ACESSO) {
+    sessionStorage.setItem("acessoLiberado", "true");
+    document.getElementById("telaLogin").style.display = "none";
+    document.getElementById("telaPrincipal").style.display = "block";
+    inicializarPainel();
   } else {
-    loginError.textContent = "Senha incorreta. Tente novamente.";
+    document.getElementById("erroSenha").innerText = "Senha incorreta. Tente novamente.";
   }
 }
 
-document.getElementById("logoutBtn").addEventListener("click", () => {
-  sessionStorage.removeItem("aguia_auth");
-  location.reload();
-});
-
-verificarLoginSalvo();
-
-// ------------------------------------------------------------
-// INICIALIZAÇÃO DO APP
-// ------------------------------------------------------------
-function iniciarApp() {
-  montarAbasDeMes();
-  montarAbasDeCategoria();
-  document.getElementById("openSheetBtn").addEventListener("click", abrirPlanilha);
-  document.getElementById("refreshBtn").addEventListener("click", carregarDados);
-  document.getElementById("addCompanyBtn").addEventListener("click", abrirModalAdicionar);
-  document.getElementById("createMonthBtn").addEventListener("click", abrirModalMes);
-
-  if (MESES_DISPONIVEIS.length > 0) {
-    estado.mes = MESES_DISPONIVEIS[0];
+function verificarSessao() {
+  if (sessionStorage.getItem("acessoLiberado") === "true") {
+    document.getElementById("telaLogin").style.display = "none";
+    document.getElementById("telaPrincipal").style.display = "block";
+    inicializarPainel();
   }
+}
+
+// ==========================================================
+// INICIALIZAÇÃO
+// ==========================================================
+function inicializarPainel() {
+  montarAbasMeses();
+  montarAbasCategorias();
   carregarDados();
 }
 
-function montarAbasDeMes() {
-  const container = document.getElementById("monthTabs");
+function montarAbasMeses() {
+  const container = document.getElementById("abasMeses");
   container.innerHTML = "";
-  MESES_DISPONIVEIS.forEach((mes) => {
+  CONFIG.MESES_DISPONIVEIS.forEach(mes => {
     const btn = document.createElement("button");
-    btn.className = "month-btn" + (mes === estado.mes ? " active" : "");
-    btn.textContent = mes;
-    btn.addEventListener("click", () => {
-      estado.mes = mes;
-      document.querySelectorAll(".month-btn").forEach(b => b.classList.remove("active"));
-      btn.classList.add("active");
+    btn.innerText = mes;
+    btn.className = "aba-mes" + (mes === mesAtual ? " ativa" : "");
+    btn.onclick = () => {
+      mesAtual = mes;
+      montarAbasMeses();
       carregarDados();
-    });
+    };
     container.appendChild(btn);
   });
 }
 
-function montarAbasDeCategoria() {
-  document.querySelectorAll(".cat-btn").forEach((btn) => {
-    btn.addEventListener("click", () => {
-      document.querySelectorAll(".cat-btn").forEach(b => b.classList.remove("active"));
-      btn.classList.add("active");
-      estado.categoria = btn.dataset.cat;
+function montarAbasCategorias() {
+  const container = document.getElementById("abasCategorias");
+  container.innerHTML = "";
+  const categorias = [
+    { chave: "SERV", label: "Serviços" },
+    { chave: "COMIND", label: "Comércio/Indústria" },
+    { chave: "ASSOC", label: "Associações" },
+    { chave: "SM", label: "SM" }
+  ];
+  categorias.forEach(cat => {
+    const btn = document.createElement("button");
+    btn.innerText = cat.label;
+    btn.className = "aba-categoria" + (cat.chave === categoriaAtual ? " ativa" : "");
+    btn.onclick = () => {
+      categoriaAtual = cat.chave;
+      montarAbasCategorias();
       carregarDados();
-    });
+    };
+    container.appendChild(btn);
   });
+}
+
+// ==========================================================
+// COMUNICAÇÃO COM O APPS SCRIPT (SEM CORS - usando text/plain)
+// ==========================================================
+function chamarBackend(acao, dados) {
+  const payload = JSON.stringify({ acao, mes: mesAtual, categoria: categoriaAtual, dados });
+
+  return fetch(APPS_SCRIPT_URL, {
+    method: "POST",
+    headers: { "Content-Type": "text/plain;charset=utf-8" },
+    body: payload
+  }).then(res => res.json());
+}
+
+function carregarDados() {
+  document.getElementById("tabelaEmpresas").innerHTML = "<tr><td>Carregando...</td></tr>";
+  chamarBackend("listar", {})
+    .then(resp => renderizarTabela(resp.empresas || []))
+    .catch(err => {
+      console.error(err);
+      document.getElementById("tabelaEmpresas").innerHTML =
+        "<tr><td>Erro ao carregar dados. Verifique a URL do Apps Script no meses.js.</td></tr>";
+    });
+}
+
+// ==========================================================
+// RENDERIZAÇÃO DA TABELA
+// ==========================================================
+function renderizarTabela(empresas) {
+  const colunas = [
+    "MOV", "EMPRESA", "ENVIO", "RET_PRES", "RET_TOMA",
+    "PREFEITURA", "GUIA_ISS", "EFD_CONTRIB", "DIRBI", "MIT", "EFD_REINF"
+  ];
+
+  let html = "<table><thead><tr>";
+  colunas.forEach(c => html += `<th>${c.replace("_", " ")}</th>`);
+  html += "<th>Ações</th></tr></thead><tbody>";
+
+  empresas.forEach((emp, index) => {
+    html += "<tr>";
+    colunas.forEach(col => {
+      if (col === "EMPRESA") {
+        html += `<td>${emp.EMPRESA || ""}</td>`;
+      } else {
+        const checked = emp[col] == 1 ? "checked" : "";
+        html += `<td><input type="checkbox" ${checked} onchange="atualizarCampo(${index}, '${col}', this.checked)"></td>`;
+      }
+    });
+    html += `<td>
+      <button onclick="editarEmpresa(${index})">✏️</button>
+      <button onclick="removerEmpresa(${index})">🗑️</button>
+    </td>`;
+    html += "</tr>";
+  });
+
+  html += "</tbody></table>";
+  document.getElementById("tabelaEmpresas").innerHTML = html;
+}
+
+// ==========================================================
+// AÇÕES: EDITAR / ADICIONAR / REMOVER
+// ==========================================================
+function atualizarCampo(index, campo, valor) {
+  chamarBackend("atualizarCampo", { index, campo, valor: valor ? 1 : 0 })
+    .then(() => console.log("Atualizado com sucesso"))
+    .catch(err => console.error(err));
+}
+
+function adicionarEmpresa() {
+  const nome = prompt("Nome da nova empresa:");
+  if (!nome) return;
+  chamarBackend("adicionar", { nome })
+    .then(() => carregarDados())
+    .catch(err => console.error(err));
+}
+
+function editarEmpresa(index) {
+  const novoNome = prompt("Novo nome da empresa:");
+  if (!novoNome) return;
+  chamarBackend("editar", { index, nome: novoNome })
+    .then(() => carregarDados())
+    .catch(err => console.error(err));
+}
+
+function removerEmpresa(index) {
+  if (!confirm("Tem certeza que deseja remover esta empresa?")) return;
+  chamarBackend("remover", { index })
+    .then(() => carregarDados())
+    .catch(err => console.error(err));
+}
+
+// ==========================================================
+// CRIAR NOVO MÊS (duplica as abas TEMPLATE_*)
+// ==========================================================
+function criarNovoMes() {
+  const nomeMes = prompt("Nome do novo mês (ex: SETEMBRO):");
+  if (!nomeMes) return;
+  chamarBackend("criarMes", { nomeMes: nomeMes.toUpperCase() })
+    .then(() => {
+      alert("Mês criado! Atualize o meses.js adicionando '" + nomeMes.toUpperCase() + "' na lista de MESES_DISPONIVEIS.");
+    })
+    .catch(err => console.error(err));
 }
 
 function abrirPlanilha() {
-  window.open(`https://docs.google.com/spreadsheets/d/${SPREADSHEET_ID}/edit`, "_blank");
+  window.open(SPREADSHEET_URL, "_blank");
 }
 
-// ------------------------------------------------------------
-// CARREGAR DADOS DA PLANILHA
-// ------------------------------------------------------------
-function carregarDados() {
-  if (!estado.mes) {
-    alert("Nenhum mês configurado em meses.js");
-    return;
-  }
-  document.getElementById("loadingIndicator").style.display = "block";
-  document.getElementById("tableBody").innerHTML = "";
-
-  const url = `${APPS_SCRIPT_URL}?action=getData&mes=${encodeURIComponent(estado.mes)}&categoria=${encodeURIComponent(estado.categoria)}`;
-
-  fetch(url)
-    .then(res => res.json())
-    .then(json => {
-      document.getElementById("loadingIndicator").style.display = "none";
-      if (!json.success) {
-        alert("Erro ao carregar dados: " + json.message);
-        return;
-      }
-      const [cabecalho, ...linhas] = json.data;
-      estado.cabecalho = cabecalho;
-      estado.linhas = linhas;
-      renderizarTabela();
-      atualizarResumo();
-    })
-    .catch(err => {
-      document.getElementById("loadingIndicator").style.display = "none";
-      alert("Erro de conexão com a planilha: " + err);
-    });
-}
-
-// ------------------------------------------------------------
-// RENDERIZAR TABELA
-// ------------------------------------------------------------
-function ehColunaCheckbox(nomeColuna) {
-  const nome = (nomeColuna || "").toUpperCase();
-  const chaves = ["MOV", "ENV", "RET", "PREFEITURA", "GUIA", "EFD", "DIRBI", "MIT", "REINF", "CONC", "SER", "CM"];
-  return chaves.some(k => nome.includes(k)) && !nome.includes("EMPRESA");
-}
-
-function renderizarTabela() {
-  const head = document.getElementById("tableHead");
-  const body = document.getElementById("tableBody");
-  head.innerHTML = "";
-  body.innerHTML = "";
-
-  // Cabeçalho
-  const trHead = document.createElement("tr");
-  estado.cabecalho.forEach((col, idx) => {
-    if ((col || "").toUpperCase().includes("EMPRESA")) estado.colunaEmpresa = idx;
-    const th = document.createElement("th");
-    th.textContent = col || "-";
-    trHead.appendChild(th);
-  });
-  const thAcoes = document.createElement("th");
-  thAcoes.textContent = "AÇÕES";
-  trHead.appendChild(thAcoes);
-  head.appendChild(trHead);
-
-  // Linhas
-  estado.linhas.forEach((linha, rowIdx) => {
-    if (!linha[estado.colunaEmpresa]) return; // pula linhas vazias/observações finais
-    const tr = document.createElement("tr");
-
-    estado.cabecalho.forEach((col, colIdx) => {
-      const td = document.createElement("td");
-      const valor = linha[colIdx];
-
-      if (colIdx === estado.colunaEmpresa) {
-        td.textContent = valor;
-        td.classList.add("empresa-col");
-      } else if (ehColunaCheckbox(col)) {
-        const checkbox = document.createElement("input");
-        checkbox.type = "checkbox";
-        checkbox.checked = valor === 1 || valor === "1" || valor === true;
-        checkbox.addEventListener("change", () => {
-          atualizarCelula(rowIdx + 2, colIdx + 1, checkbox.checked ? 1 : 0);
-        });
-        td.appendChild(checkbox);
-      } else {
-        td.textContent = valor !== undefined ? valor : "";
-      }
-      tr.appendChild(td);
-    });
-
-    const tdAcoes = document.createElement("td");
-    tdAcoes.innerHTML = `
-      <div class="action-icons">
-        <button class="icon-btn" title="Editar">✏️</button>
-        <button class="icon-btn" title="Remover">🗑️</button>
-      </div>`;
-    tdAcoes.querySelector("[title='Editar']").addEventListener("click", () => abrirModalEditar(rowIdx));
-    tdAcoes.querySelector("[title='Remover']").addEventListener("click", () => removerEmpresa(rowIdx));
-    tr.appendChild(tdAcoes);
-
-    body.appendChild(tr);
-  });
-}
-
-function atualizarResumo() {
-  const total = estado.linhas.filter(l => l[estado.colunaEmpresa]).length;
-  document.getElementById("summary").textContent = `Total de empresas: ${total}`;
-}
-
-// ------------------------------------------------------------
-// ATUALIZAR CÉLULA (checkbox)
-// ------------------------------------------------------------
-function atualizarCelula(row, col, valor) {
-  fetch(APPS_SCRIPT_URL, {
-    method: "POST",
-    body: JSON.stringify({
-      action: "updateCell",
-      mes: estado.mes,
-      categoria: estado.categoria,
-      row: row,
-      col: col,
-      value: valor
-    })
-  })
-  .then(res => res.json())
-  .then(json => {
-    if (!json.success) alert("Erro ao salvar: " + json.message);
-  })
-  .catch(err => alert("Erro de conexão: " + err));
-}
-
-// ------------------------------------------------------------
-// MODAL ADICIONAR / EDITAR EMPRESA
-// ------------------------------------------------------------
-const companyModal = document.getElementById("companyModal");
-const modalFields = document.getElementById("modalFields");
-const modalTitle = document.getElementById("modalTitle");
-let linhaEmEdicao = null;
-
-function abrirModalAdicionar() {
-  linhaEmEdicao = null;
-  modalTitle.textContent = "Adicionar Empresa";
-  montarCamposModal(estado.cabecalho.map(() => ""));
-  companyModal.style.display = "flex";
-}
-
-function abrirModalEditar(rowIdx) {
-  linhaEmEdicao = rowIdx;
-  modalTitle.textContent = "Editar Empresa";
-  montarCamposModal(estado.linhas[rowIdx]);
-  companyModal.style.display = "flex";
-}
-
-function montarCamposModal(valores) {
-  modalFields.innerHTML = "";
-  estado.cabecalho.forEach((col, idx) => {
-    const label = document.createElement("label");
-    label.textContent = col || `Coluna ${idx + 1}`;
-    const input = document.createElement("input");
-    input.type = "text";
-    input.value = valores[idx] !== undefined ? valores[idx] : "";
-    input.dataset.idx = idx;
-    modalFields.appendChild(label);
-    modalFields.appendChild(input);
-  });
-}
-
-document.getElementById("modalCancelBtn").addEventListener("click", () => {
-  companyModal.style.display = "none";
-});
-
-document.getElementById("modalSaveBtn").addEventListener("click", () => {
-  const inputs = modalFields.querySelectorAll("input");
-  const valores = Array.from(inputs).map(i => {
-    const v = i.value.trim();
-    if (v === "0" || v === "1") return Number(v);
-    return v;
-  });
-
-  if (linhaEmEdicao === null) {
-    // Adicionar
-    fetch(APPS_SCRIPT_URL, {
-      method: "POST",
-      body: JSON.stringify({
-        action: "addRow",
-        mes: estado.mes,
-        categoria: estado.categoria,
-        values: valores
-      })
-    })
-    .then(res => res.json())
-    .then(json => {
-      if (json.success) {
-        companyModal.style.display = "none";
-        carregarDados();
-      } else {
-        alert("Erro: " + json.message);
-      }
-    });
-  } else {
-    // Editar
-    fetch(APPS_SCRIPT_URL, {
-      method: "POST",
-      body: JSON.stringify({
-        action: "updateRow",
-        mes: estado.mes,
-        categoria: estado.categoria,
-        row: linhaEmEdicao + 2,
-        values: valores
-      })
-    })
-    .then(res => res.json())
-    .then(json => {
-      if (json.success) {
-        companyModal.style.display = "none";
-        carregarDados();
-      } else {
-        alert("Erro: " + json.message);
-      }
-    });
-  }
-});
-
-function removerEmpresa(rowIdx) {
-  const nome = estado.linhas[rowIdx][estado.colunaEmpresa];
-  if (!confirm(`Remover a empresa "${nome}"?`)) return;
-
-  fetch(APPS_SCRIPT_URL, {
-    method: "POST",
-    body: JSON.stringify({
-      action: "deleteRow",
-      mes: estado.mes,
-      categoria: estado.categoria,
-      row: rowIdx + 2
-    })
-  })
-  .then(res => res.json())
-  .then(json => {
-    if (json.success) {
-      carregarDados();
-    } else {
-      alert("Erro: " + json.message);
-    }
-  });
-}
-
-// ------------------------------------------------------------
-// MODAL CRIAR NOVO MÊS
-// ------------------------------------------------------------
-const monthModal = document.getElementById("monthModal");
-
-function abrirModalMes() {
-  document.getElementById("newMonthName").value = "";
-  monthModal.style.display = "flex";
-}
-
-document.getElementById("monthCancelBtn").addEventListener("click", () => {
-  monthModal.style.display = "none";
-});
-
-document.getElementById("monthSaveBtn").addEventListener("click", () => {
-  const nome = document.getElementById("newMonthName").value.trim().toUpperCase();
-  if (!nome) {
-    alert("Digite o nome do mês.");
-    return;
-  }
-
-  fetch(APPS_SCRIPT_URL, {
-    method: "POST",
-    body: JSON.stringify({
-      action: "createMonth",
-      mes: nome
-    })
-  })
-  .then(res => res.json())
-  .then(json => {
-    if (json.success) {
-      alert(`Mês "${nome}" criado com sucesso! Adicione "${nome}" na lista MESES_DISPONIVEIS do arquivo meses.js.`);
-      monthModal.style.display = "none";
-    } else {
-      alert("Erro: " + json.message);
-    }
-  });
-});
+// ==========================================================
+// INICIA AO CARREGAR A PÁGINA
+// ==========================================================
+window.onload = verificarSessao;
