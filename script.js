@@ -1,5 +1,5 @@
 // ==========================================================
-// CONTROLE FISCAL - SCRIPT PRINCIPAL
+// CONTROLE FISCAL - SCRIPT PRINCIPAL (VERSÃO FLUIDA)
 // ==========================================================
 
 const APPS_SCRIPT_URL = CONFIG.APPS_SCRIPT_URL;
@@ -9,6 +9,7 @@ let categoriaAtual = null;
 let mesesDisponiveis = [];
 let headersAtuais = [];
 let linhasAtuais = [];
+let debounceTimers = {};
 
 // ---------------------------------------------------------
 // LOGIN
@@ -56,12 +57,19 @@ function chamarBackend(acao, extras) {
     headers: { "Content-Type": "text/plain;charset=utf-8" },
     body: JSON.stringify(corpo)
   })
-    .then(function (resposta) { return resposta.json(); })
-    .then(function (json) {
-      if (!json.ok) {
-        throw new Error(json.erro || "Erro desconhecido no servidor.");
-      }
-      return json.dados;
+    .then(function (resposta) {
+      return resposta.text().then(function (texto) {
+        let json;
+        try {
+          json = JSON.parse(texto);
+        } catch (e) {
+          throw new Error("Resposta inválida do servidor (não é JSON). Verifique se a implantação do Apps Script está atualizada.");
+        }
+        if (!json.ok) {
+          throw new Error(json.erro || "Erro desconhecido no servidor.");
+        }
+        return json.dados;
+      });
     });
 }
 
@@ -80,9 +88,7 @@ function iniciarApp() {
 function carregarMeses() {
   chamarBackend("listarMeses")
     .then(function (meses) {
-      if (!meses || meses.length === 0) {
-        meses = [CONFIG.MES_PADRAO];
-      }
+      if (!meses || meses.length === 0) meses = [CONFIG.MES_PADRAO];
       mesesDisponiveis = meses;
       montarBotoesMeses();
 
@@ -94,6 +100,8 @@ function carregarMeses() {
     })
     .catch(function (erro) {
       console.error("Erro ao carregar meses:", erro);
+      const container = document.getElementById("tabela-container");
+      if (container) container.innerHTML = "<p class='erro-msg'>Erro ao conectar com o servidor: " + erro.message + "</p>";
       mesesDisponiveis = [CONFIG.MES_PADRAO];
       montarBotoesMeses();
       selecionarMes(CONFIG.MES_PADRAO);
@@ -103,7 +111,6 @@ function carregarMeses() {
 function montarBotoesMeses() {
   const container = document.getElementById("botoes-meses");
   container.innerHTML = "";
-
   mesesDisponiveis.forEach(function (mes) {
     const btn = document.createElement("button");
     btn.className = "btn-mes" + (mes === mesAtual ? " ativo" : "");
@@ -116,10 +123,7 @@ function montarBotoesMeses() {
 function selecionarMes(mes) {
   mesAtual = mes;
   montarBotoesMeses();
-
-  if (!categoriaAtual) {
-    categoriaAtual = CONFIG.CATEGORIAS[0].sufixo;
-  }
+  if (!categoriaAtual) categoriaAtual = CONFIG.CATEGORIAS[0].sufixo;
   montarAbasCategorias();
   carregarDados();
 }
@@ -127,7 +131,6 @@ function selecionarMes(mes) {
 function montarAbasCategorias() {
   const container = document.getElementById("abas-categorias");
   container.innerHTML = "";
-
   CONFIG.CATEGORIAS.forEach(function (cat) {
     const btn = document.createElement("button");
     btn.className = "btn-categoria" + (cat.sufixo === categoriaAtual ? " ativo" : "");
@@ -142,7 +145,7 @@ function montarAbasCategorias() {
 }
 
 // ---------------------------------------------------------
-// CARREGAR E RENDERIZAR DADOS DA TABELA
+// CARREGAR E RENDERIZAR DADOS
 // ---------------------------------------------------------
 
 function nomeAbaAtual() {
@@ -168,7 +171,7 @@ function carregarDados() {
 }
 
 // ---------------------------------------------------------
-// DETECÇÃO DE COLUNAS DE TEXTO x STATUS (3 ESTADOS)
+// DETECÇÃO DE COLUNAS DE TEXTO x STATUS
 // ---------------------------------------------------------
 
 const PALAVRAS_TEXTO = [
@@ -178,8 +181,7 @@ const PALAVRAS_TEXTO = [
 ];
 
 function normalizar(texto) {
-  return String(texto || "").toLowerCase()
-    .normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+  return String(texto || "").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
 }
 
 function headerEhTexto(colIndex) {
@@ -191,7 +193,6 @@ function colunaEhBinaria(colIndex) {
   return !headerEhTexto(colIndex);
 }
 
-// Converte o valor bruto da célula no rótulo padronizado: "Sim", "Não", "N/A" ou ""
 function normalizarValorStatus(valorStr, valorNormalizado) {
   if (valorNormalizado === "sim" || valorStr === "1") return "Sim";
   if (valorNormalizado === "nao" || valorStr === "0") return "Não";
@@ -215,9 +216,7 @@ function renderizarTabela() {
   }
 
   let html = "<table class='tabela-dados'><thead><tr>";
-  headersAtuais.forEach(function (h) {
-    html += "<th>" + (h || "") + "</th>";
-  });
+  headersAtuais.forEach(function (h) { html += "<th>" + (h || "") + "</th>"; });
   html += "<th>Ações</th></tr></thead><tbody>";
 
   if (linhasAtuais.length === 0) {
@@ -236,7 +235,7 @@ function renderizarTabela() {
 
         html += "<td class='celula-status' data-col='" + colIndex + "'>" +
           "<select class='select-status status-" + classeStatus(valorAtual) + "' " +
-          "onchange=\"this.className='select-status status-' + classeStatus(this.value); editarCelula(" + linhaObj.linha + ", " + colIndex + ", this.value); marcarSalvo(this);\">" +
+          "onchange=\"aplicarStatusInstantaneo(this, " + linhaObj.linha + ", " + colIndex + ");\">" +
           "<option value=''" + (valorAtual === "" ? " selected" : "") + ">-</option>" +
           "<option value='Sim'" + (valorAtual === "Sim" ? " selected" : "") + ">Sim</option>" +
           "<option value='Não'" + (valorAtual === "Não" ? " selected" : "") + ">Não</option>" +
@@ -244,7 +243,7 @@ function renderizarTabela() {
           "</select></td>";
       } else {
         html += "<td><input type='text' class='campo-texto' value=\"" + escaparHtml(valorStr) + "\" " +
-          "onblur=\"editarCelula(" + linhaObj.linha + ", " + colIndex + ", this.value); marcarSalvo(this);\"></td>";
+          "oninput=\"aplicarTextoComDebounce(this, " + linhaObj.linha + ", " + colIndex + ");\"></td>";
       }
     });
 
@@ -262,11 +261,63 @@ function escaparHtml(texto) {
   return div.innerHTML;
 }
 
+// ---------------------------------------------------------
+// FLUIDEZ: resposta instantânea (otimista) + debounce
+// ---------------------------------------------------------
+
+// Para os selects (Sim/Não/N.A): muda a cor NA HORA, salva em segundo plano
+function aplicarStatusInstantaneo(elemento, linha, coluna) {
+  const valor = elemento.value;
+
+  // Feedback visual imediato, sem esperar o servidor
+  elemento.className = "select-status status-" + classeStatus(valor);
+  marcarSalvando(elemento);
+
+  // Atualiza os dados em memória na hora, para o dashboard refletir instantaneamente
+  const linhaObj = linhasAtuais.find(function (l) { return l.linha === linha; });
+  if (linhaObj) {
+    linhaObj.valores[coluna] = valor;
+    renderizarDashboard();
+  }
+
+  editarCelula(linha, coluna, valor, elemento);
+}
+
+// Para os campos de texto: espera 500ms após parar de digitar para salvar
+function aplicarTextoComDebounce(elemento, linha, coluna) {
+  const chave = linha + "_" + coluna;
+  marcarSalvando(elemento);
+
+  if (debounceTimers[chave]) {
+    clearTimeout(debounceTimers[chave]);
+  }
+
+  debounceTimers[chave] = setTimeout(function () {
+    editarCelula(linha, coluna, elemento.value, elemento);
+    delete debounceTimers[chave];
+  }, 500);
+}
+
+function marcarSalvando(elemento) {
+  const celula = elemento.closest("td");
+  if (!celula) return;
+  celula.classList.remove("celula-salva", "celula-erro");
+  celula.classList.add("celula-pendente");
+}
+
 function marcarSalvo(elemento) {
   const celula = elemento.closest("td");
   if (!celula) return;
+  celula.classList.remove("celula-pendente");
   celula.classList.add("celula-salva");
   setTimeout(function () { celula.classList.remove("celula-salva"); }, 900);
+}
+
+function marcarErro(elemento) {
+  const celula = elemento.closest("td");
+  if (!celula) return;
+  celula.classList.remove("celula-pendente");
+  celula.classList.add("celula-erro");
 }
 
 // ---------------------------------------------------------
@@ -327,25 +378,17 @@ function renderizarDashboard() {
 // EDITAR / ADICIONAR / REMOVER
 // ---------------------------------------------------------
 
-function editarCelula(linha, coluna, valor) {
+function editarCelula(linha, coluna, valor, elementoOrigem) {
   mostrarStatusSalvando("Salvando...", null);
 
-  chamarBackend("salvarCelula", {
-    aba: nomeAbaAtual(),
-    linha: linha,
-    coluna: coluna,
-    valor: valor
-  })
+  chamarBackend("salvarCelula", { aba: nomeAbaAtual(), linha: linha, coluna: coluna, valor: valor })
     .then(function () {
       mostrarStatusSalvando("Salvo!", true);
-      const linhaObj = linhasAtuais.find(function (l) { return l.linha === linha; });
-      if (linhaObj) {
-        linhaObj.valores[coluna] = valor;
-        renderizarDashboard();
-      }
+      if (elementoOrigem) marcarSalvo(elementoOrigem);
     })
     .catch(function (erro) {
       mostrarStatusSalvando("Erro ao salvar: " + erro.message, false);
+      if (elementoOrigem) marcarErro(elementoOrigem);
     });
 }
 
@@ -375,9 +418,7 @@ function confirmarAdicionarEmpresa() {
       fecharModalAdicionar();
       carregarDados();
     })
-    .catch(function (erro) {
-      alert("Erro ao adicionar empresa: " + erro.message);
-    });
+    .catch(function (erro) { alert("Erro ao adicionar empresa: " + erro.message); });
 }
 
 function removerEmpresa(linha) {
@@ -403,11 +444,7 @@ function fecharModalNovoMes() {
 
 function confirmarNovoMes() {
   const nomeMes = document.getElementById("input-novo-mes").value.trim().toUpperCase();
-
-  if (!nomeMes) {
-    alert("Digite o nome do mês.");
-    return;
-  }
+  if (!nomeMes) { alert("Digite o nome do mês."); return; }
 
   chamarBackend("criarMes", { mes: nomeMes })
     .then(function (resultado) {
@@ -415,9 +452,7 @@ function confirmarNovoMes() {
       alert("Mês criado com sucesso: " + resultado.abas.join(", "));
       carregarMeses();
     })
-    .catch(function (erro) {
-      alert("Erro ao criar o novo mês: " + erro.message);
-    });
+    .catch(function (erro) { alert("Erro ao criar o novo mês: " + erro.message); });
 }
 
 // ---------------------------------------------------------
@@ -443,11 +478,7 @@ function fecharModalDuplicarMes() {
 
 function confirmarDuplicarMes() {
   const nomeMes = document.getElementById("input-mes-duplicado").value.trim().toUpperCase();
-
-  if (!nomeMes) {
-    alert("Digite o nome do novo mês.");
-    return;
-  }
+  if (!nomeMes) { alert("Digite o nome do novo mês."); return; }
 
   if (!mesesDisponiveis || mesesDisponiveis.length === 0) {
     alert("Não há nenhum mês existente para duplicar.");
@@ -462,9 +493,7 @@ function confirmarDuplicarMes() {
       alert("Mês duplicado com sucesso a partir de " + mesOrigem + ": " + resultado.abas.join(", "));
       carregarMeses();
     })
-    .catch(function (erro) {
-      alert("Erro ao duplicar o mês: " + erro.message);
-    });
+    .catch(function (erro) { alert("Erro ao duplicar o mês: " + erro.message); });
 }
 
 // ---------------------------------------------------------
@@ -477,10 +506,7 @@ function toggleMenuExportar() {
 }
 
 function exportarCSV() {
-  if (!headersAtuais || headersAtuais.length === 0) {
-    alert("Não há dados para exportar.");
-    return;
-  }
+  if (!headersAtuais || headersAtuais.length === 0) { alert("Não há dados para exportar."); return; }
 
   let conteudo = headersAtuais.join(";") + "\n";
 
@@ -510,23 +536,13 @@ function exportarCSV() {
 }
 
 function exportarPDF() {
-  if (!headersAtuais || headersAtuais.length === 0) {
-    alert("Não há dados para exportar.");
-    return;
-  }
+  if (!headersAtuais || headersAtuais.length === 0) { alert("Não há dados para exportar."); return; }
 
   const catNome = CONFIG.CATEGORIAS.find(function (c) { return c.sufixo === categoriaAtual; });
   const dataGeracao = new Date().toLocaleString("pt-BR");
 
   let html = "<html><head><meta charset='UTF-8'><title>Relatório</title>";
-  html += "<style>";
-  html += "body{font-family:Arial, sans-serif; padding:20px;}";
-  html += "h1{color:#0b1d3a; font-size:18px; margin-bottom:0;}";
-  html += "p.info{color:#555; font-size:12px; margin-top:4px;}";
-  html += "table{width:100%; border-collapse:collapse; margin-top:16px;}";
-  html += "th{background:#0b1d3a; color:#fff; padding:6px; font-size:11px; text-align:left; border:1px solid #0b1d3a;}";
-  html += "td{padding:6px; font-size:11px; border:1px solid #ccc;}";
-  html += "</style></head><body>";
+  html += "<style>body{font-family:Arial, sans-serif; padding:20px;}h1{color:#0b1d3a; font-size:18px; margin-bottom:0;}p.info{color:#555; font-size:12px; margin-top:4px;}table{width:100%; border-collapse:collapse; margin-top:16px;}th{background:#0b1d3a; color:#fff; padding:6px; font-size:11px; text-align:left; border:1px solid #0b1d3a;}td{padding:6px; font-size:11px; border:1px solid #ccc;}</style></head><body>";
   html += "<h1>Controle Fiscal LP/LR - " + mesAtual + " (" + (catNome ? catNome.nome : categoriaAtual) + ")</h1>";
   html += "<p class='info'>Gerado em: " + dataGeracao + "</p>";
   html += "<table><thead><tr>";
@@ -568,7 +584,7 @@ function mostrarStatusSalvando(texto, sucesso) {
   status.style.display = "inline-block";
 
   if (sucesso !== null) {
-    setTimeout(function () { status.style.display = "none"; }, 2500);
+    setTimeout(function () { status.style.display = "none"; }, 2000);
   }
 }
 
