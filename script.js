@@ -168,6 +168,15 @@ function carregarDados() {
     });
 }
 
+// Verifica se, olhando os valores já existentes na coluna, ela é do tipo Sim/Não
+function headerEhBinario(colIndex) {
+  return linhasAtuais.some(function (linhaObj) {
+    const v = String(linhaObj.valores[colIndex] || "").trim().toLowerCase()
+      .normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+    return v === "sim" || v === "nao";
+  });
+}
+
 function renderizarTabela() {
   const container = document.getElementById("tabela-container");
 
@@ -190,12 +199,26 @@ function renderizarTabela() {
     html += "<tr>";
     linhaObj.valores.forEach(function (valor, colIndex) {
       const valorStr = (valor === null || valor === undefined) ? "" : String(valor).trim();
-      const ehBinario = valorStr === "0" || valorStr === "1";
+      const valorNormalizado = valorStr.toLowerCase()
+        .normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+
+      const ehBinarioNumerico = valorStr === "0" || valorStr === "1";
+      const ehSimNaoValor = valorNormalizado === "sim" || valorNormalizado === "nao";
+      const colunaEhBinaria = headerEhBinario(colIndex);
+
+      // Considera checklist se o valor já for 0/1, já for Sim/Não,
+      // ou se a coluna inteira for do tipo Sim/Não e a célula estiver vazia
+      const ehBinario = ehBinarioNumerico || ehSimNaoValor || (colunaEhBinaria && valorStr === "");
 
       if (ehBinario) {
+        const marcado = valorStr === "1" || valorNormalizado === "sim";
+        const valorMarcado = ehBinarioNumerico ? "1" : "Sim";
+        const valorDesmarcado = ehBinarioNumerico ? "0" : "Não";
+
         html += "<td class='celula-check'><input type='checkbox' " +
-          (valorStr === "1" ? "checked" : "") +
-          " onchange=\"editarCelula(" + linhaObj.linha + ", " + colIndex + ", this.checked ? '1' : '0')\"></td>";
+          (marcado ? "checked" : "") +
+          " onchange=\"editarCelula(" + linhaObj.linha + ", " + colIndex + ", this.checked ? '" +
+          valorMarcado + "' : '" + valorDesmarcado + "')\"></td>";
       } else {
         html += "<td><input type='text' class='campo-texto' value=\"" + escaparHtml(valorStr) + "\" " +
           "onblur=\"editarCelula(" + linhaObj.linha + ", " + colIndex + ", this.value)\"></td>";
