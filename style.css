@@ -11,7 +11,6 @@ body {
   scrollbar-color: #1e63d0 #e6e9ef;
 }
 
-/* ---------- LOGIN ---------- */
 #tela-login {
   height: 100vh;
   display: flex;
@@ -61,7 +60,6 @@ body {
   margin-bottom: 10px;
 }
 
-/* ---------- HEADER ---------- */
 header {
   background: #0b1d3a;
   color: #fff;
@@ -94,7 +92,6 @@ header {
 .header-right .btn-duplicar { background: #6a3fb5; }
 .header-right .btn-sair { background: #c0392b; }
 
-/* ---------- MESES / CATEGORIAS ---------- */
 #botoes-meses, #abas-categorias {
   display: flex;
   gap: 8px;
@@ -115,7 +112,6 @@ header {
 
 .btn-mes.ativo, .btn-categoria.ativo { background: #0b1d3a; color: #fff; }
 
-/* ---------- DASHBOARD ---------- */
 #dashboard-container { padding: 16px 24px 0; }
 
 .dashboard-cards {
@@ -158,7 +154,6 @@ header {
 
 .card-percentual { font-size: 12px; font-weight: 600; color: #555; text-align: right; }
 
-/* ---------- CONTEÚDO ---------- */
 .conteudo { padding: 20px 24px; }
 
 .barra-acoes {
@@ -170,12 +165,7 @@ header {
   gap: 10px;
 }
 
-.barra-acoes-esquerda {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  position: relative;
-}
+.barra-acoes-esquerda { display: flex; align-items: center; gap: 10px; position: relative; }
 
 .btn-adicionar {
   background: #2e7d32;
@@ -184,10 +174,8 @@ header {
   padding: 10px 16px;
   border-radius: 6px;
   cursor: pointer;
-  font-weight: 600;
-}
-
-.btn-exportar {
+  
+  .btn-exportar {
   background: #0e8a6d;
   color: #fff;
   border: none;
@@ -277,13 +265,16 @@ table.tabela-dados td {
   border-bottom: 1px solid #eee;
   border-right: 1px solid #e2e6ed;
   white-space: nowrap;
-  transition: background 0.4s ease;
+  transition: background 0.3s ease;
 }
 
 table.tabela-dados td:last-child { border-right: none; }
 table.tabela-dados tbody tr:hover { background: #f7f9fc; }
 
+/* Estados visuais de salvamento (fluidez) */
+.celula-pendente { background: #fff8e1 !important; }
 .celula-salva { background: #d9f2df !important; }
+.celula-erro { background: #fde0de !important; }
 
 .campo-texto {
   width: 100%;
