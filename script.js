@@ -6,6 +6,7 @@ let mesAtual = CONFIG.MES_PADRAO;
 let categoriaAtual = "SERV";
 let colunasAtuais = [];
 let dadosAtuais = [];
+let listaMeses = [CONFIG.MES_PADRAO]; // fallback inicial, será atualizado pela API
 
 // Colunas que devem virar CHECKBOX (checklist) em vez de campo de texto
 const COLUNAS_CHECKLIST = [
@@ -50,15 +51,38 @@ window.onload = function () {
 
 // ===================== INICIALIZAÇÃO ===================== //
 function iniciarApp() {
-  renderizarBarraMeses();
-  renderizarBarraCategorias();
-  carregarDados();
+  carregarListaMeses();
+}
+
+// Busca a lista de meses já criados direto do backend (Code.gs -> listarMeses)
+function carregarListaMeses() {
+  const url = `${APPS_SCRIPT_URL}?action=listarMeses`;
+
+  fetch(url)
+    .then((res) => res.json())
+    .then((resp) => {
+      const meses = resp.dados || resp.meses;
+      if (resp.sucesso !== false && Array.isArray(meses) && meses.length > 0) {
+        listaMeses = meses;
+        if (!listaMeses.includes(mesAtual)) {
+          mesAtual = listaMeses[0];
+        }
+      }
+    })
+    .catch(() => {
+      // Se der erro, mantém o fallback [CONFIG.MES_PADRAO]
+    })
+    .finally(() => {
+      renderizarBarraMeses();
+      renderizarBarraCategorias();
+      carregarDados();
+    });
 }
 
 function renderizarBarraMeses() {
   const container = document.getElementById("barra-meses");
   container.innerHTML = "";
-  CONFIG.MESES.forEach((mes) => {
+  listaMeses.forEach((mes) => {
     const btn = document.createElement("button");
     btn.className = "chip-mes" + (mes === mesAtual ? " ativo" : "");
     btn.innerText = mes;
@@ -327,13 +351,13 @@ function confirmarNovoMes() {
     .then((resp) => {
       if (resp.sucesso) {
         fecharModalNovoMes();
-        if (!CONFIG.MESES.includes(nomeMes)) {
-          CONFIG.MESES.push(nomeMes);
+        if (!listaMeses.includes(nomeMes)) {
+          listaMeses.push(nomeMes);
         }
         mesAtual = nomeMes;
         renderizarBarraMeses();
         carregarDados();
-        alert("Mês criado com sucesso! Lembre-se de adicionar '" + nomeMes + "' na lista MESES do arquivo meses.js para ele continuar aparecendo nas próximas visitas.");
+        alert("Mês criado com sucesso!");
       } else {
         alert("Erro ao criar o novo mês: " + (resp.mensagem || "desconhecido"));
       }
