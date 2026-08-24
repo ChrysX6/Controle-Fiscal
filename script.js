@@ -1,251 +1,235 @@
-// ==========================================================
-// CONTROLE FISCAL - SCRIPT PRINCIPAL
-// ==========================================================
-
+// ===================== CONFIGURAÇÃO ===================== //
 const APPS_SCRIPT_URL = CONFIG.APPS_SCRIPT_URL;
+const SENHA_ACESSO = CONFIG.SENHA_ACESSO;
 
-let mesAtual = null;
-let categoriaAtual = null;
-let mesesDisponiveis = [];
-let headersAtuais = [];
-let linhasAtuais = [];
+let mesAtual = CONFIG.MES_PADRAO;
+let categoriaAtual = "SERV";
+let colunasAtuais = [];
+let dadosAtuais = [];
 
-// ---------------------------------------------------------
-// LOGIN
-// ---------------------------------------------------------
+// Colunas que devem virar CHECKBOX (checklist) em vez de campo de texto
+const COLUNAS_CHECKLIST = [
+  "CONC", "MOV", "SER", "COM", "CM", "ENVIO", "ENV", "RET PRES", "RET TOMA",
+  "PREFEITURA", "GUIA ISS", "MIT", "EFD ICMS/IPI", "EFD REINF",
+  "DIPAM / QUOTAS"
+];
+// Colunas que contém EFD CONTRIB e DIRBI variam de nome por causa da data (ex: "EFD CONT 06/2026")
+function ehColunaChecklist(nomeColuna) {
+  const nome = nomeColuna.toUpperCase().trim();
+  if (COLUNAS_CHECKLIST.includes(nome)) return true;
+  if (nome.startsWith("EFD CONT")) return true;
+  if (nome.startsWith("DIRBI")) return true;
+  return false;
+}
 
-function verificarLogin() {
-  const logado = sessionStorage.getItem("logado");
-  if (logado === "true") {
+// ===================== LOGIN ===================== //
+function verificarSenha() {
+  const senha = document.getElementById("input-senha").value;
+  if (senha === SENHA_ACESSO) {
+    sessionStorage.setItem("logado", "sim");
     document.getElementById("tela-login").style.display = "none";
     document.getElementById("app").style.display = "block";
     iniciarApp();
   } else {
-    document.getElementById("tela-login").style.display = "flex";
-    document.getElementById("app").style.display = "none";
-  }
-}
-
-function fazerLogin() {
-  const senha = document.getElementById("input-senha").value;
-  const erroLogin = document.getElementById("erro-login");
-
-  if (senha === CONFIG.SENHA_ACESSO) {
-    sessionStorage.setItem("logado", "true");
-    erroLogin.style.display = "none";
-    verificarLogin();
-  } else {
-    erroLogin.style.display = "block";
+    document.getElementById("erro-senha").innerText = "Senha incorreta. Tente novamente.";
   }
 }
 
 function sair() {
   sessionStorage.removeItem("logado");
-  verificarLogin();
+  location.reload();
 }
 
-// ---------------------------------------------------------
-// CHAMADAS AO APPS SCRIPT (sempre POST + text/plain para evitar CORS)
-// ---------------------------------------------------------
-
-function chamarBackend(acao, extras) {
-  const corpo = Object.assign({ acao: acao }, extras || {});
-
-  return fetch(APPS_SCRIPT_URL, {
-    method: "POST",
-    headers: {
-      "Content-Type": "text/plain;charset=utf-8"
-    },
-    body: JSON.stringify(corpo)
-  })
-    .then(function (resposta) {
-      return resposta.json();
-    })
-    .then(function (json) {
-      if (!json.ok) {
-        throw new Error(json.erro || "Erro desconhecido no servidor.");
-      }
-      return json.dados;
-    });
-}
-
-// ---------------------------------------------------------
-// INICIALIZAÇÃO DO APP
-// ---------------------------------------------------------
-
-function iniciarApp() {
-  document.getElementById("logo-empresa").src = "https://chrysx6.github.io/LinksAguiaContab/links/img/logo1.jpg";
-  document.getElementById("btn-abrir-planilha").href = CONFIG.SPREADSHEET_URL;
-
-  carregarMeses();
-  montarAbasCategorias();
-}
-
-function carregarMeses() {
-  chamarBackend("listarMeses")
-    .then(function (meses) {
-      if (!meses || meses.length === 0) {
-        meses = [CONFIG.MES_PADRAO];
-      }
-      mesesDisponiveis = meses;
-      montarBotoesMeses();
-
-      if (mesesDisponiveis.indexOf(CONFIG.MES_PADRAO) > -1) {
-        selecionarMes(CONFIG.MES_PADRAO);
-      } else {
-        selecionarMes(mesesDisponiveis[0]);
-      }
-    })
-    .catch(function (erro) {
-      console.error("Erro ao carregar meses:", erro);
-      mesesDisponiveis = [CONFIG.MES_PADRAO];
-      montarBotoesMeses();
-      selecionarMes(CONFIG.MES_PADRAO);
-    });
-}
-
-function montarBotoesMeses() {
-  const container = document.getElementById("botoes-meses");
-  container.innerHTML = "";
-
-  mesesDisponiveis.forEach(function (mes) {
-    const btn = document.createElement("button");
-    btn.className = "btn-mes" + (mes === mesAtual ? " ativo" : "");
-    btn.textContent = mes.charAt(0) + mes.slice(1).toLowerCase();
-    btn.onclick = function () { selecionarMes(mes); };
-    container.appendChild(btn);
-  });
-}
-
-function selecionarMes(mes) {
-  mesAtual = mes;
-  montarBotoesMeses();
-
-  if (!categoriaAtual) {
-    categoriaAtual = CONFIG.CATEGORIAS[0].sufixo;
+window.onload = function () {
+  if (sessionStorage.getItem("logado") === "sim") {
+    document.getElementById("tela-login").style.display = "none";
+    document.getElementById("app").style.display = "block";
+    iniciarApp();
   }
-  montarAbasCategorias();
+};
+
+// ===================== INICIALIZAÇÃO ===================== //
+function iniciarApp() {
+  renderizarBarraMeses();
+  renderizarBarraCategorias();
   carregarDados();
 }
 
-function montarAbasCategorias() {
-  const container = document.getElementById("abas-categorias");
+function renderizarBarraMeses() {
+  const container = document.getElementById("barra-meses");
   container.innerHTML = "";
-
-  CONFIG.CATEGORIAS.forEach(function (cat) {
+  CONFIG.MESES.forEach((mes) => {
     const btn = document.createElement("button");
-    btn.className = "btn-categoria" + (cat.sufixo === categoriaAtual ? " ativo" : "");
-    btn.textContent = cat.nome;
-    btn.onclick = function () {
-      categoriaAtual = cat.sufixo;
-      montarAbasCategorias();
+    btn.className = "chip-mes" + (mes === mesAtual ? " ativo" : "");
+    btn.innerText = mes;
+    btn.onclick = () => {
+      mesAtual = mes;
+      renderizarBarraMeses();
       carregarDados();
     };
     container.appendChild(btn);
   });
 }
 
-// ---------------------------------------------------------
-// CARREGAR E RENDERIZAR DADOS DA TABELA
-// ---------------------------------------------------------
-
-function nomeAbaAtual() {
-  return mesAtual + "_" + categoriaAtual;
+function renderizarBarraCategorias() {
+  const categorias = [
+    { chave: "SERV", nome: "Serviços" },
+    { chave: "COMIND", nome: "Comércio & Indústria" },
+    { chave: "ASSOC", nome: "Associações" },
+    { chave: "SM", nome: "SM" }
+  ];
+  const container = document.getElementById("barra-categorias");
+  container.innerHTML = "";
+  categorias.forEach((cat) => {
+    const btn = document.createElement("button");
+    btn.className = "chip-categoria" + (cat.chave === categoriaAtual ? " ativo" : "");
+    btn.innerText = cat.nome;
+    btn.onclick = () => {
+      categoriaAtual = cat.chave;
+      renderizarBarraCategorias();
+      carregarDados();
+    };
+    container.appendChild(btn);
+  });
 }
 
+// ===================== CARREGAR DADOS ===================== //
 function carregarDados() {
-  const container = document.getElementById("tabela-container");
-  container.innerHTML = "<p class='carregando'>Carregando...</p>";
+  document.getElementById("tabela-body").innerHTML = '<tr><td class="carregando">Carregando...</td></tr>';
+  document.getElementById("tabela-head").innerHTML = "";
 
-  chamarBackend("getDados", { aba: nomeAbaAtual() })
-    .then(function (dados) {
-      headersAtuais = dados.headers || [];
-      linhasAtuais = dados.linhas || [];
+  const url = `${APPS_SCRIPT_URL}?action=getDados&mes=${mesAtual}&categoria=${categoriaAtual}`;
+
+  fetch(url)
+    .then((res) => res.json())
+    .then((resp) => {
+      if (!resp.sucesso) {
+        document.getElementById("tabela-body").innerHTML =
+          `<tr><td class="carregando">Erro: ${resp.mensagem || "não foi possível carregar"}</td></tr>`;
+        return;
+      }
+      colunasAtuais = resp.colunas;
+      dadosAtuais = resp.linhas;
       renderizarTabela();
     })
-    .catch(function (erro) {
-      container.innerHTML = "<p class='erro-msg'>Erro ao carregar dados: " + erro.message + "</p>";
+    .catch((err) => {
+      document.getElementById("tabela-body").innerHTML =
+        `<tr><td class="carregando">Erro de conexão: ${err}</td></tr>`;
     });
 }
 
+// ===================== RENDERIZAR TABELA ===================== //
 function renderizarTabela() {
-  const container = document.getElementById("tabela-container");
+  const thead = document.getElementById("tabela-head");
+  const tbody = document.getElementById("tabela-body");
 
-  if (!headersAtuais || headersAtuais.length === 0) {
-    container.innerHTML = "<p class='erro-msg'>Esta aba está vazia ou não foi encontrada.</p>";
+  // Cabeçalho
+  let headHtml = "<tr>";
+  colunasAtuais.forEach((col) => {
+    headHtml += `<th>${col}</th>`;
+  });
+  headHtml += "<th>Ações</th></tr>";
+  thead.innerHTML = headHtml;
+
+  if (dadosAtuais.length === 0) {
+    tbody.innerHTML = `<tr><td class="carregando" colspan="${colunasAtuais.length + 1}">Nenhuma empresa cadastrada nesta aba.</td></tr>`;
     return;
   }
 
-  let html = "<table class='tabela-dados'><thead><tr>";
-  headersAtuais.forEach(function (h) {
-    html += "<th>" + (h || "") + "</th>";
-  });
-  html += "<th>Ações</th></tr></thead><tbody>";
-
-  if (linhasAtuais.length === 0) {
-    html += "<tr><td colspan='" + (headersAtuais.length + 1) + "' class='vazio'>Nenhuma empresa cadastrada nesta aba.</td></tr>";
-  }
-
-  linhasAtuais.forEach(function (linhaObj) {
-    html += "<tr>";
-    linhaObj.valores.forEach(function (valor, colIndex) {
-      const valorStr = (valor === null || valor === undefined) ? "" : String(valor).trim();
-      const ehBinario = valorStr === "0" || valorStr === "1";
-
-      if (ehBinario) {
-        html += "<td class='celula-check'><input type='checkbox' " +
-          (valorStr === "1" ? "checked" : "") +
-          " onchange=\"editarCelula(" + linhaObj.linha + ", " + colIndex + ", this.checked ? '1' : '0')\"></td>";
+  // Corpo
+  let bodyHtml = "";
+  dadosAtuais.forEach((linha, indiceLinha) => {
+    bodyHtml += "<tr>";
+    colunasAtuais.forEach((col, indiceColuna) => {
+      const valor = linha[indiceColuna] !== undefined ? linha[indiceColuna] : "";
+      if (ehColunaChecklist(col)) {
+        const marcado = valorEhVerdadeiro(valor);
+        bodyHtml += `<td>
+          <input type="checkbox" class="check-fiscal" ${marcado ? "checked" : ""}
+            onchange="salvarCelula(${indiceLinha}, ${indiceColuna}, this.checked ? 1 : 0)">
+        </td>`;
       } else {
-        html += "<td><input type='text' class='campo-texto' value=\"" + escaparHtml(valorStr) + "\" " +
-          "onblur=\"editarCelula(" + linhaObj.linha + ", " + colIndex + ", this.value)\"></td>";
+        bodyHtml += `<td>
+          <input type="text" class="input-tabela" value="${escaparHtml(valor)}"
+            onblur="salvarCelula(${indiceLinha}, ${indiceColuna}, this.value)">
+        </td>`;
       }
     });
-
-    html += "<td class='acoes'><button class='btn-remover' onclick=\"removerEmpresa(" + linhaObj.linha + ")\">🗑️</button></td>";
-    html += "</tr>";
+    bodyHtml += `<td><button class="btn-remover" onclick="removerEmpresa(${indiceLinha})">🗑️</button></td>`;
+    bodyHtml += "</tr>";
   });
-
-  html += "</tbody></table>";
-  container.innerHTML = html;
+  tbody.innerHTML = bodyHtml;
 }
 
-function escaparHtml(texto) {
-  const div = document.createElement("div");
-  div.textContent = texto;
-  return div.innerHTML;
+function valorEhVerdadeiro(valor) {
+  if (valor === true) return true;
+  const texto = String(valor).trim().toUpperCase();
+  return texto === "1" || texto === "SIM" || texto === "TRUE" || texto === "X";
 }
 
-// ---------------------------------------------------------
-// EDITAR / ADICIONAR / REMOVER
-// ---------------------------------------------------------
+function escaparHtml(valor) {
+  return String(valor).replace(/"/g, "&quot;");
+}
 
-function editarCelula(linha, coluna, valor) {
-  mostrarStatusSalvando("Salvando...", null);
+// ===================== SALVAR CÉLULA ===================== //
+function salvarCelula(indiceLinha, indiceColuna, novoValor) {
+  mostrarStatus("Salvando...", "");
 
-  chamarBackend("salvarCelula", {
-    aba: nomeAbaAtual(),
-    linha: linha,
-    coluna: coluna,
-    valor: valor
+  const corpo = {
+    action: "salvarCelula",
+    mes: mesAtual,
+    categoria: categoriaAtual,
+    linha: indiceLinha,
+    coluna: indiceColuna,
+    valor: novoValor
+  };
+
+  fetch(APPS_SCRIPT_URL, {
+    method: "POST",
+    headers: { "Content-Type": "text/plain;charset=utf-8" },
+    body: JSON.stringify(corpo)
   })
-    .then(function () {
-      mostrarStatusSalvando("Salvo!", true);
+    .then((res) => res.json())
+    .then((resp) => {
+      if (resp.sucesso) {
+        dadosAtuais[indiceLinha][indiceColuna] = novoValor;
+        mostrarStatus("✔ Salvo", "ok");
+      } else {
+        mostrarStatus("Erro ao salvar", "erro");
+      }
     })
-    .catch(function (erro) {
-      mostrarStatusSalvando("Erro ao salvar: " + erro.message, false);
-    });
+    .catch(() => mostrarStatus("Erro de conexão", "erro"));
 }
 
-function abrirModalAdicionar() {
-  document.getElementById("modal-adicionar").style.display = "flex";
-  const camposContainer = document.getElementById("campos-nova-empresa");
-  camposContainer.innerHTML = "";
+function mostrarStatus(texto, classe) {
+  const el = document.getElementById("status-salvamento");
+  el.innerText = texto;
+  el.className = "status-salvamento " + classe;
+  if (classe === "ok") {
+    setTimeout(() => { el.innerText = ""; }, 2000);
+  }
+}
 
-  headersAtuais.forEach(function (h, i) {
-    camposContainer.innerHTML += "<label>" + (h || ("Coluna " + (i + 1))) +
-      "</label><input type='text' id='novo-campo-" + i + "' class='campo-modal'>";
+// ===================== ADICIONAR EMPRESA ===================== //
+function mostrarModalAdicionar() {
+  const container = document.getElementById("form-adicionar-campos");
+  container.innerHTML = "";
+  colunasAtuais.forEach((col, i) => {
+    if (ehColunaChecklist(col)) {
+      container.innerHTML += `
+        <div class="campo-checkbox">
+          <input type="checkbox" id="novo-campo-${i}">
+          <label for="novo-campo-${i}">${col}</label>
+        </div>`;
+    } else {
+      container.innerHTML += `
+        <div>
+          <label>${col}</label>
+          <input type="text" id="novo-campo-${i}" placeholder="${col}">
+        </div>`;
+    }
   });
+  document.getElementById("modal-adicionar").style.display = "flex";
 }
 
 function fecharModalAdicionar() {
@@ -253,46 +237,69 @@ function fecharModalAdicionar() {
 }
 
 function confirmarAdicionarEmpresa() {
-  const dados = headersAtuais.map(function (h, i) {
-    const el = document.getElementById("novo-campo-" + i);
-    return el ? el.value : "";
+  const novaLinha = colunasAtuais.map((col, i) => {
+    const campo = document.getElementById(`novo-campo-${i}`);
+    if (ehColunaChecklist(col)) {
+      return campo.checked ? 1 : 0;
+    }
+    return campo.value;
   });
 
-  chamarBackend("adicionarEmpresa", {
-    aba: nomeAbaAtual(),
-    dados: dados
+  const corpo = {
+    action: "adicionarEmpresa",
+    mes: mesAtual,
+    categoria: categoriaAtual,
+    linha: novaLinha
+  };
+
+  fetch(APPS_SCRIPT_URL, {
+    method: "POST",
+    headers: { "Content-Type": "text/plain;charset=utf-8" },
+    body: JSON.stringify(corpo)
   })
-    .then(function () {
-      fecharModalAdicionar();
-      carregarDados();
+    .then((res) => res.json())
+    .then((resp) => {
+      if (resp.sucesso) {
+        fecharModalAdicionar();
+        carregarDados();
+      } else {
+        alert("Erro ao adicionar empresa: " + (resp.mensagem || "desconhecido"));
+      }
     })
-    .catch(function (erro) {
-      alert("Erro ao adicionar empresa: " + erro.message);
-    });
+    .catch((err) => alert("Erro de conexão: " + err));
 }
 
-function removerEmpresa(linha) {
+// ===================== REMOVER EMPRESA ===================== //
+function removerEmpresa(indiceLinha) {
   if (!confirm("Tem certeza que deseja remover esta empresa?")) return;
 
-  chamarBackend("removerEmpresa", {
-    aba: nomeAbaAtual(),
-    linha: linha
+  const corpo = {
+    action: "removerEmpresa",
+    mes: mesAtual,
+    categoria: categoriaAtual,
+    linha: indiceLinha
+  };
+
+  fetch(APPS_SCRIPT_URL, {
+    method: "POST",
+    headers: { "Content-Type": "text/plain;charset=utf-8" },
+    body: JSON.stringify(corpo)
   })
-    .then(function () {
-      carregarDados();
+    .then((res) => res.json())
+    .then((resp) => {
+      if (resp.sucesso) {
+        carregarDados();
+      } else {
+        alert("Erro ao remover empresa: " + (resp.mensagem || "desconhecido"));
+      }
     })
-    .catch(function (erro) {
-      alert("Erro ao remover empresa: " + erro.message);
-    });
+    .catch((err) => alert("Erro de conexão: " + err));
 }
 
-// ---------------------------------------------------------
-// CRIAR NOVO MÊS
-// ---------------------------------------------------------
-
-function abrirModalNovoMes() {
-  document.getElementById("modal-novo-mes").style.display = "flex";
+// ===================== CRIAR NOVO MÊS ===================== //
+function mostrarModalNovoMes() {
   document.getElementById("input-novo-mes").value = "";
+  document.getElementById("modal-novo-mes").style.display = "flex";
 }
 
 function fecharModalNovoMes() {
@@ -301,42 +308,40 @@ function fecharModalNovoMes() {
 
 function confirmarNovoMes() {
   const nomeMes = document.getElementById("input-novo-mes").value.trim().toUpperCase();
-
   if (!nomeMes) {
-    alert("Digite o nome do mês.");
+    alert("Digite um nome válido para o mês.");
     return;
   }
 
-  chamarBackend("criarMes", { mes: nomeMes })
-    .then(function (resultado) {
-      fecharModalNovoMes();
-      alert("Mês criado com sucesso: " + resultado.abas.join(", "));
-      carregarMeses();
+  const corpo = {
+    action: "criarMes",
+    mes: nomeMes
+  };
+
+  fetch(APPS_SCRIPT_URL, {
+    method: "POST",
+    headers: { "Content-Type": "text/plain;charset=utf-8" },
+    body: JSON.stringify(corpo)
+  })
+    .then((res) => res.json())
+    .then((resp) => {
+      if (resp.sucesso) {
+        fecharModalNovoMes();
+        if (!CONFIG.MESES.includes(nomeMes)) {
+          CONFIG.MESES.push(nomeMes);
+        }
+        mesAtual = nomeMes;
+        renderizarBarraMeses();
+        carregarDados();
+        alert("Mês criado com sucesso! Lembre-se de adicionar '" + nomeMes + "' na lista MESES do arquivo meses.js para ele continuar aparecendo nas próximas visitas.");
+      } else {
+        alert("Erro ao criar o novo mês: " + (resp.mensagem || "desconhecido"));
+      }
     })
-    .catch(function (erro) {
-      alert("Erro ao criar o novo mês: " + erro.message);
-    });
+    .catch((err) => alert("Erro de conexão: " + err));
 }
 
-// ---------------------------------------------------------
-// STATUS DE SALVAMENTO
-// ---------------------------------------------------------
-
-function mostrarStatusSalvando(texto, sucesso) {
-  const status = document.getElementById("status-salvando");
-  status.textContent = texto;
-  status.className = sucesso === null ? "status-neutro" : (sucesso ? "status-sucesso" : "status-erro");
-  status.style.display = "inline-block";
-
-  if (sucesso !== null) {
-    setTimeout(function () {
-      status.style.display = "none";
-    }, 2500);
-  }
+// ===================== ABRIR PLANILHA ===================== //
+function abrirPlanilha() {
+  window.open(CONFIG.SPREADSHEET_URL, "_blank");
 }
-
-// ---------------------------------------------------------
-// START
-// ---------------------------------------------------------
-
-window.onload = verificarLogin;
