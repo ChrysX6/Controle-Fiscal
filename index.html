@@ -3,74 +3,89 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Controle Fiscal</title>
+<title>Controle Fiscal - AguiaContab</title>
 <link rel="stylesheet" href="style.css">
 </head>
 <body>
 
   <!-- TELA DE LOGIN -->
-  <div id="tela-login">
-    <div class="caixa-login">
-      <img src="https://chrysx6.github.io/LinksAguiaContab/links/img/logo1.jpg" alt="Logo">
+  <div id="tela-login" class="tela-login">
+    <div class="login-box">
+      <img src="https://chrysx6.github.io/LinksAguiaContab/links/img/logo1.jpg" alt="Aguia Contab" class="login-logo">
       <h2>Controle Fiscal</h2>
-      <p id="erro-login">Senha incorreta. Tente novamente.</p>
-      <input type="password" id="input-senha" placeholder="Digite a senha de acesso" onkeydown="if(event.key==='Enter') fazerLogin()">
-      <button onclick="fazerLogin()">Entrar</button>
+      <p>Digite a senha de acesso</p>
+      <input type="password" id="input-senha" placeholder="Senha de acesso" onkeydown="if(event.key==='Enter') verificarSenha()">
+      <button onclick="verificarSenha()">Entrar</button>
+      <p id="erro-senha" class="erro-msg"></p>
     </div>
   </div>
 
   <!-- APP PRINCIPAL -->
-  <div id="app" style="display:none;">
+  <div id="app" class="app-container" style="display:none;">
 
-    <header>
-      <div class="header-left">
-        <img id="logo-empresa" src="" alt="Logo">
-        <h1>Controle Fiscal</h1>
+    <!-- CABEÇALHO FIXO COM LOGO CENTRALIZADA -->
+    <header class="header-fixo">
+      <div class="header-conteudo">
+        <div class="header-lado" id="header-esquerda"></div>
+        <div class="header-centro">
+          <img src="https://chrysx6.github.io/LinksAguiaContab/links/img/logo1.jpg" alt="Aguia Contab" class="logo-principal">
+          <h1>Controle Fiscal</h1>
+        </div>
+        <div class="header-lado header-direita">
+          <button class="btn btn-azul" onclick="abrirPlanilha()">📄 Abrir Planilha</button>
+          <button class="btn btn-azul" onclick="mostrarModalNovoMes()">🗓️ Criar Novo Mês</button>
+          <button class="btn btn-vermelho" onclick="sair()">🚪 Sair</button>
+        </div>
       </div>
-      <div class="header-right">
-        <a id="btn-abrir-planilha" href="#" target="_blank">📄 Abrir Planilha</a>
-        <button onclick="abrirModalNovoMes()">🗓️ Criar Novo Mês</button>
-        <button class="btn-sair" onclick="sair()">Sair</button>
-      </div>
+
+      <!-- SELETOR DE MÊS -->
+      <div class="barra-meses" id="barra-meses"></div>
+
+      <!-- ABAS DE CATEGORIA -->
+      <div class="barra-categorias" id="barra-categorias"></div>
     </header>
 
-    <div id="botoes-meses"></div>
-    <div id="abas-categorias"></div>
-
-    <div class="conteudo">
-      <div class="barra-acoes">
-        <button class="btn-adicionar" onclick="abrirModalAdicionar()">+ Adicionar Empresa</button>
-        <span id="status-salvando"></span>
+    <!-- CONTEÚDO -->
+    <main class="conteudo">
+      <div class="acoes-topo">
+        <button class="btn btn-verde" onclick="mostrarModalAdicionar()">➕ Adicionar Empresa</button>
+        <span id="status-salvamento" class="status-salvamento"></span>
       </div>
 
-      <div id="tabela-container">
-        <p class="carregando">Carregando...</p>
+      <div class="tabela-scroll-wrapper">
+        <div class="tabela-scroll">
+          <table id="tabela-empresas">
+            <thead id="tabela-head"></thead>
+            <tbody id="tabela-body">
+              <tr><td class="carregando">Carregando...</td></tr>
+            </tbody>
+          </table>
+        </div>
       </div>
-    </div>
-
+    </main>
   </div>
 
   <!-- MODAL ADICIONAR EMPRESA -->
-  <div class="modal" id="modal-adicionar">
-    <div class="modal-caixa">
+  <div id="modal-adicionar" class="modal-overlay" style="display:none;">
+    <div class="modal-box">
       <h3>Adicionar Empresa</h3>
-      <div id="campos-nova-empresa"></div>
+      <div id="form-adicionar-campos" class="form-campos"></div>
       <div class="modal-botoes">
-        <button class="btn-confirmar" onclick="confirmarAdicionarEmpresa()">Salvar</button>
-        <button class="btn-cancelar" onclick="fecharModalAdicionar()">Cancelar</button>
+        <button class="btn btn-verde" onclick="confirmarAdicionarEmpresa()">Adicionar</button>
+        <button class="btn btn-cinza" onclick="fecharModalAdicionar()">Cancelar</button>
       </div>
     </div>
   </div>
 
   <!-- MODAL NOVO MÊS -->
-  <div class="modal" id="modal-novo-mes">
-    <div class="modal-caixa">
+  <div id="modal-novo-mes" class="modal-overlay" style="display:none;">
+    <div class="modal-box">
       <h3>Criar Novo Mês</h3>
-      <label>Digite o nome do novo mês (ex: SETEMBRO):</label>
-      <input type="text" id="input-novo-mes" class="campo-modal">
+      <p>Digite o nome do novo mês (ex: SETEMBRO):</p>
+      <input type="text" id="input-novo-mes" placeholder="SETEMBRO">
       <div class="modal-botoes">
-        <button class="btn-confirmar" onclick="confirmarNovoMes()">Criar</button>
-        <button class="btn-cancelar" onclick="fecharModalNovoMes()">Cancelar</button>
+        <button class="btn btn-verde" onclick="confirmarNovoMes()">Criar</button>
+        <button class="btn btn-cinza" onclick="fecharModalNovoMes()">Cancelar</button>
       </div>
     </div>
   </div>
