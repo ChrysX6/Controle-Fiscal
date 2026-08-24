@@ -168,13 +168,29 @@ function carregarDados() {
     });
 }
 
-// Verifica se, olhando os valores já existentes na coluna, ela é do tipo Sim/Não
-function headerEhBinario(colIndex) {
-  return linhasAtuais.some(function (linhaObj) {
-    const v = String(linhaObj.valores[colIndex] || "").trim().toLowerCase()
-      .normalize("NFD").replace(/[\u0300-\u036f]/g, "");
-    return v === "sim" || v === "nao";
-  });
+// ---------------------------------------------------------
+// DETECÇÃO DE COLUNAS DE TEXTO x COLUNAS DE CHECKLIST
+// ---------------------------------------------------------
+
+// Lista de "palavras-chave" que indicam coluna de TEXTO (não deve virar checkbox)
+// Se algum header novo de texto aparecer, basta adicionar a palavra-chave aqui.
+function headerEhTexto(colIndex) {
+  const h = String(headersAtuais[colIndex] || "").toLowerCase()
+    .normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+  const palavrasTexto = [
+    "empresa", "nome", "cliente", "cnpj", "cpf",
+    "endereco", "telefone", "celular", "email",
+    "observ", "contato", "responsavel"
+  ];
+  return palavrasTexto.some(function (p) { return h.indexOf(p) > -1; });
+}
+
+// Agora TODA coluna que não for de texto é considerada binária (checklist)
+// Isso garante que colunas como MOV, ENVIO, RET PRES, RET TOMA, PREFEITURA,
+// GUIA ISS, EFD CONTRIB, DIRBI, MIT, EFD REINF, etc. sempre virem checkbox,
+// mesmo que estejam totalmente vazias ainda.
+function colunaEhBinaria(colIndex) {
+  return !headerEhTexto(colIndex);
 }
 
 function renderizarTabela() {
@@ -204,11 +220,12 @@ function renderizarTabela() {
 
       const ehBinarioNumerico = valorStr === "0" || valorStr === "1";
       const ehSimNaoValor = valorNormalizado === "sim" || valorNormalizado === "nao";
-      const colunaEhBinaria = headerEhBinario(colIndex);
 
-      // Considera checklist se o valor já for 0/1, já for Sim/Não,
-      // ou se a coluna inteira for do tipo Sim/Não e a célula estiver vazia
-      const ehBinario = ehBinarioNumerico || ehSimNaoValor || (colunaEhBinaria && valorStr === "");
+      // Valor "reconhecível" como binário: já é sim/não, 0/1, ou está vazio
+      const valorReconhecivel = ehBinarioNumerico || ehSimNaoValor || valorStr === "";
+
+      // A coluna vira checklist se NÃO for de texto E o valor for reconhecível
+      const ehBinario = colunaEhBinaria(colIndex) && valorReconhecivel;
 
       if (ehBinario) {
         const marcado = valorStr === "1" || valorNormalizado === "sim";
